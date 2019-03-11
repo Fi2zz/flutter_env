@@ -1,0 +1,11 @@
+name: flutter_env
+description: A new Flutter package project.
+version: 0.0.1
+author: Fi2zz <wenjingbiao@outlook.com>
+
+homepage: https://github.com/Fi2zz/flutter_env
+
+environment:
+  sdk: ">=2.0.0-dev.68.0 <3.0.0"
+
+
