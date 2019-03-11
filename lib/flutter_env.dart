@@ -3,6 +3,8 @@ library flutter_env;
 
 import 'dart:io';
 import 'dart:core';
+import 'package:path/path.dart';
+
 final String iosDir = "./ios/Runner";
 final String androidDir = "./android/app";
 final String dartDir = "./lib";
@@ -154,4 +156,10 @@ class DovEnv {
       this._writeFile(this._objcFile, _GenCodeOfObjc(content).code);
   _gradle({content: List}) =>
       this._writeFile(this._gradleFile, _GenCodeOfGradle(content).code);
+}
+
+
+
+env(){
+  print(Directory.current);
 }
