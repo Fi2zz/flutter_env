@@ -1,23 +1,9 @@
 library flutter_env;
 
-
 import 'dart:io';
 import 'dart:core';
-import 'package:path/path.dart';
+import 'package:path/path.dart' as path;
 
-final String iosDir = "./ios/Runner";
-final String androidDir = "./android/app";
-final String dartDir = "./lib";
-parseArguments({List argv}) {
-  Map<String, String> result = {"filename": ""};
-  for (var i = 0; i < argv.length; i++) {
-    var items = argv[i].split('=');
-    if (items.first == 'file') {
-      result.addAll({"filename": "${items.last}"});
-    }
-  }
-  return result;
-}
 abstract class _CodeGen {
   String output = '';
   _CodeGen(content) {
@@ -25,19 +11,25 @@ abstract class _CodeGen {
   }
   generate(content) {}
 }
+
+
 class _GenCodeOfDart extends _CodeGen {
   String code = "";
   _GenCodeOfDart(content) : super(content);
   generate(content) {
-    content = content.map((item) {
-      item = item.replaceAll("=", ' = "');
-      item = ' static String $item";';
-      return item;
-    });
+    if (content.isNotEmpty) {
+      content = content.map((item) {
+        item = item.replaceAll("=", ' = "');
+        item = ' static String $item";';
+        return item;
+      });
+    }
+
     final properties = content.join('\n');
-    this.code = "class EnvOfDart {\n$properties\n }";
+    this.code = "class ENV {\n$properties\n }";
   }
 }
+
 class _GenCodeOfObjc extends _CodeGen {
   String code = "";
   _GenCodeOfObjc(content) : super(content);
@@ -53,6 +45,7 @@ class _GenCodeOfObjc extends _CodeGen {
     this.code = "#define DotEnv @{\n$objcContent\n};";
   }
 }
+
 class _GenCodeOfGradle extends _CodeGen {
   String code = "";
   _GenCodeOfGradle(content) : super(content);
@@ -76,90 +69,118 @@ class _GenCodeOfGradle extends _CodeGen {
     this.template(list.join("\n"));
   }
 }
-class DovEnv {
-  String _objcFile = "$iosDir/dotEnv.m";
-  String _dartFile = "$dartDir/dot_env.dart";
-  String _gradleFile = "$androidDir/dotenv.gradle";
-  CodeGenerator(argvs) {
-    this._initialize(argvs);
+
+class DotENV {
+  DotENV(commandLine) {
+    this.create(commandLine: commandLine);
   }
-  _initialize(argvs) async {
-    String envfile = await this._getENVFilename(argvs);
+  create({commandLine: String}) async {
+    final parsed = this.parse(commandLine: commandLine);
+    final paths = this.getPath(parsed);
 
-    if(envfile !=null){
-      await this._createDirectory();
-      await this._generator(envFile: envfile);
-    }
-  }
-  _createDirectory() async {
+    final content = await this.getENVContent(path:paths['origin']);
 
-    if( Directory(iosDir).existsSync() == false){
-      await Directory(iosDir).create(recursive: true);
-    }
+    final expanded = this.expand(content, false);
 
-    if( Directory(dartDir).existsSync() == false){
-      await Directory(dartDir).create(recursive: true);
-    }
+    final codes = _GenCodeOfDart(expanded).code;
 
-    if( Directory(androidDir).existsSync() == false){
-      await Directory(androidDir).create(recursive: true);
-    }
-
+    this.write(paths['generated'], codes);
   }
 
-  _getENVFilename(argvs) async {
-    Map parsed = parseArguments(argv: argvs);
-    String envFile = './.env';
-    if (parsed.isNotEmpty) {
-      envFile = parsed['filename'];
+  parse({commandLine: String}) {
+    Map result = {};
+    for (var i = 0; i < commandLine.length; i++) {
+      if (i % 2 == 0 && i + 1 < commandLine.length) {
+        var key = commandLine[i];
+        var value = commandLine[i + 1];
+        if (key.indexOf('--') == 0 || key.indexOf('-') == 0) {
+          if (key.indexOf('--') == 0) {
+            key = key.substring(2);
+          } else if (key.indexOf('-') == 0) {
+            key = key.substring(1);
+          }
+          if (value == null) {
+            value = true;
+          }
+          result[key] = value;
+        }
+      }
     }
+    return result;
+  }
+
+  getPath(argv) {
+    const DEFAULT_ENVFILE = ".env";
+    const DEFAULT_DIRNAME = "./";
+    const NOT_GENERATE_OBJECTIVE_C_FILE = true;
+    const NOT_GENERATE_GRADLE_FILE = true;
+    const DEFAULT_PLATFORM = "flutter";
+    final platform =
+    argv['platform'] == null ? DEFAULT_PLATFORM : argv['platform'];
+    final envfile = argv['envfile'] == null ? DEFAULT_ENVFILE : argv["envfile"];
+    final dirname = argv['dirname'] == null ? DEFAULT_DIRNAME : argv['dirname'];
+    final generateObjcFile = argv["generate-objc"] == null
+        ? NOT_GENERATE_OBJECTIVE_C_FILE
+        : argv["generate-objc"];
+    final generateGradleFile = argv["generate-gradle"] == null
+        ? NOT_GENERATE_GRADLE_FILE
+        : argv["generate-objc"];
+
+    String envfileRelativePath = "./";
+    switch (platform) {
+      case "android":
+        envfileRelativePath = "../../";
+        break;
+      case "ios":
+        envfileRelativePath = "../";
+        break;
+      default:
+        break;
+    }
+    String envfilePath = path.join(dirname, envfileRelativePath, envfile);
+    envfilePath = path.normalize(envfilePath);
+    String dartEnvFilePath =
+    path.join(dirname, envfileRelativePath, 'lib/env.dart');
+    dartEnvFilePath = path.normalize(dartEnvFilePath);
+
+    return {
+      "origin": envfilePath,
+      "generated": dartEnvFilePath,
+    };
+  }
+
+  getENVContent({path:String}) async {
+    String content;
     try {
-      await File(envFile).open();
+      content = await File(path).readAsString();
     } catch (e) {
       print("**************************");
-      print("Missing $envFile file");
+      print("*** Missing .env file ****");
       print("**************************");
     }
-
-    return envFile;
+    return content;
   }
 
-  _writeFile(filename, content) async {
+  write(filename, content) async {
     try {
       await File(filename).writeAsString(content, mode: FileMode.write);
       print('file: $filename written');
     } catch (error) {
-      print('oops');
+      print('oops,file written failed');
       print(error);
     }
   }
 
-  _generator({envFile: String}) async {
-    var content = await File(envFile).readAsString();
-    this._dart(content: this._expand(content, false));
-    this._objc(content: this._expand(content, true));
-    this._gradle(content: this._expand(content, true));
-  }
-
-  _expand(content, shouldExpend) {
-    List<String> list = content.split("\n").toList();
-    if (shouldExpend == true) {
+  expand(content, shouldExpend) {
+    List<String> list = content
+        .split("\n")
+        .where((item) => item != null && item != '')
+        .toList();
+    if (shouldExpend == true && list.isNotEmpty) {
       List<List> expanded = list.map((item) => item.split("=")).toList();
       return expanded;
     } else {
       return list;
     }
   }
-  _dart({content: List}) =>
-      this._writeFile(this._dartFile, _GenCodeOfDart(content).code);
-  _objc({content}) =>
-      this._writeFile(this._objcFile, _GenCodeOfObjc(content).code);
-  _gradle({content: List}) =>
-      this._writeFile(this._gradleFile, _GenCodeOfGradle(content).code);
-}
-
-
-
-env(){
-  print(Directory.current);
 }
