@@ -143,6 +143,9 @@ class DotENV {
     path.join(dirname, envfileRelativePath, 'lib/env.dart');
     dartEnvFilePath = path.normalize(dartEnvFilePath);
 
+    print("[Flutter ENV] Using envfile:  ${envfilePath}");
+    print("[Flutter ENV] Target envfile:  ${dartEnvFilePath}");
+
     return {
       "origin": envfilePath,
       "generated": dartEnvFilePath,
